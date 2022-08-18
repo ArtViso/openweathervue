@@ -3,39 +3,39 @@
     <LoadingWeather/>
   </div>
   <div class="weather" v-else>
-    <div class="weather_main" v-if="!errorWeather">
-      <div class="weather_main_date">
+    <div class="weather-main" v-if="!errorWeather">
+      <div class="weather-main__date">
         <input v-on:keyup.enter="getWeather" v-model="nameCity">
-        <h1>{{ getUTS }}</h1>
-        <h1>{{ getDateNow }}</h1>
+        <h2>{{ getUTC }}</h2>
+        <h2>{{ getDateNow }}</h2>
       </div>
-      <div class="weather_main_icon">
+      <div class="weather-main__icon">
         <img class="iconAnimation" alt="cloud" :src="require(`@/assets/iconWeather/${getIconWeather}.svg`)">
       </div>
-      <div class="weather_main_temp">
-        <h1>{{townWeather.weather[0].description.toUpperCase()}}</h1>
-        <div class="temp" @click="toggleCondition = !toggleCondition">
+      <div class="weather-main__temp">
+        <h2>{{ descriptionWeather }}</h2>
+        <div class="temp" @click="showCelsius = !showCelsius">
           <img alt="thermometer" src="@/assets/thermometer.svg">
-          <h1 v-if="!toggleCondition">{{ getTempCelsius }}</h1>
-          <h1 v-else>{{ getTempFahrenheit }}</h1>
+          <p v-if="!showCelsius">{{ getTempCelsius }}</p>
+          <p v-else>{{ getTempFahrenheit }}</p>
         </div>
       </div>
-      <div class="weather_main_info">
+      <div class="weather-main__info">
         <div>
           <img src="@/assets/compass.svg" alt="compass">
-          <h1>{{`${Math.trunc (townWeather.visibility / 1000)}`}}km</h1>
+          <h2>{{ visibility }}km</h2>
         </div>
         <div>
           <img src="@/assets/cloudy.svg" alt="cloudy">
-          <h1>{{townWeather.main.pressure}}hPa</h1>
+          <h2>{{ pressure }}hPa</h2>
         </div>
         <div>
           <img src="@/assets/rain.svg" alt="rain">
-          <h1>{{townWeather.main.humidity}}%</h1>
+          <h2>{{ humidity }}%</h2>
         </div>
       </div>
     </div>
-    <div class="weather_main_error" v-else>
+    <div class="weather-main__error" v-else>
       <img alt="tornado" src="@/assets/tornado.svg">
       <h2>Something went wrong!</h2>
       <h5>Sorry! Something went wrong! Please try again </h5>
@@ -45,8 +45,7 @@
 </template>
 
 <script>
-import {onMounted, ref, computed} from "vue";
-import axios from "axios";
+import {onMounted, ref, computed, inject} from "vue";
 import LoadingWeather from "./LoadingWeather"
 
 export default {
@@ -56,15 +55,21 @@ export default {
   },
   setup() {
     const nameCity = ref('');
+    const api = inject('api');
     const townWeather = ref('');
     const errorWeather = ref('');
-    const getUTS = new Date().toUTCString().slice(0, -12);
+    const getUTC = ref(new Date().toUTCString().slice(0, -12));
     const getDateNow = ref('');
     const loading = ref(true);
-    const toggleCondition = ref(false);
-    const getIconWeather = ref('');
+    const showCelsius = ref(false);
+
     const getTempCelsius = computed(() => `${Math.trunc(townWeather.value.main.temp - 273.15)}℃`);
-    const getTempFahrenheit = computed(() => `${Math.trunc(((townWeather.value.main.temp - 273.15) * 1.8) + 32)}℉`)
+    const getTempFahrenheit = computed(() => `${Math.trunc(((townWeather.value.main.temp - 273.15) * 1.8) + 32)}℉`);
+    const descriptionWeather = computed(() => townWeather.value.weather[0].description.toUpperCase());
+    const visibility = computed(() => Math.trunc(townWeather.value.visibility / 1000));
+    const getIconWeather = computed(() => townWeather.value.weather[0].icon);
+    const pressure = computed(() => townWeather.value.main.pressure);
+    const humidity = computed(() => townWeather.value.main.humidity);
 
     const printTime = () => {
       loading.value = true;
@@ -72,37 +77,33 @@ export default {
         getDateNow.value = new Date().toLocaleTimeString().slice(0, -3);
       }, 40)
     }
-
-    const getWeather = () => {
-      loading.value = true;
-      axios.get(`https://api.openweathermap.org/data/2.5/weather?q=${nameCity.value}&appid=${process.env.VUE_APP_KEY}`)
-          .then((result) => {
-            townWeather.value = result.data;
-            nameCity.value = result.data.name;
-            getIconWeather.value = result.data.weather[0].icon;
-            loading.value = false;
-          })
-          .catch((error) => {
-            errorWeather.value = error.message;
-            loading.value = false;
-          })
-    }
-
     const getLocation = () => navigator.geolocation.getCurrentPosition(showLocationWeather);
 
-    const showLocationWeather = (position) => {
+    const getWeather = async () => {
       loading.value = true;
-      axios.get(`https://api.openweathermap.org/data/2.5/weather?lat=${position.coords.latitude}&lon=${position.coords.longitude}&appid=${process.env.VUE_APP_KEY}`)
-          .then((result) => {
-            townWeather.value = result.data;
-            nameCity.value = result.data.name
-            getIconWeather.value = result.data.weather[0].icon
-            loading.value = false;
-          })
-          .catch((error) => {
-            errorWeather.value = error.message;
-            loading.value = false;
-          })
+      try {
+        townWeather.value = (
+            await api.getWeather(nameCity.value)
+        ).data;
+        loading.value = false;
+      } catch (error) {
+        errorWeather.value = error.response.data.message;
+        loading.value = false;
+      }
+    }
+
+    const showLocationWeather = async (position) => {
+      loading.value = true;
+      try {
+        townWeather.value = (
+            await api.showLocationWeather(position.coords.latitude, position.coords.longitude)
+        ).data;
+        nameCity.value = townWeather.value.name
+        loading.value = false;
+      } catch (error) {
+        errorWeather.value = error.response.data.message;
+        loading.value = false;
+      }
     }
 
     onMounted(() => {
@@ -115,20 +116,24 @@ export default {
       getWeather,
       townWeather,
       errorWeather,
-      getUTS,
+      getUTC,
       getDateNow,
       loading,
-      toggleCondition,
+      showCelsius,
       getTempCelsius,
       getTempFahrenheit,
-      getIconWeather
+      getIconWeather,
+      descriptionWeather,
+      visibility,
+      pressure,
+      humidity
     }
   }
 }
 </script>
 <style scoped>
 
-h1{
+h1 {
   color: #272727;
 }
 
@@ -137,7 +142,7 @@ h1{
   justify-content: center;
 }
 
-.weather_main {
+.weather-main {
   margin: auto;
   border-radius: 15px;
   box-shadow: 0 5px 10px 2px rgba(34, 60, 80, 0.2);
@@ -152,7 +157,7 @@ h1{
   margin: 0 auto;
 }
 
-.temp h1 {
+.temp p {
   font-size: 55px;
   margin: 20px 0 0 -20px;
   cursor: pointer;
@@ -161,48 +166,49 @@ h1{
   -ms-user-select: none;
 }
 
-.weather_main_info{
+.weather-main__info {
   margin: 0;
   padding: 0;
   display: flex;
   justify-content: space-evenly;
 }
 
-.weather_main_icon img{
+.weather-main__icon img {
   width: 150px;
   height: 150px;
 }
-.weather_main_temp {
+
+.weather-main__temp {
   margin: 20px 0 20px 0;
 }
 
-.weather_main_temp img{
+.weather-main__temp img {
   margin: 20px 0 0 -20px;
   width: 100px;
   height: 100px;
 }
 
-.weather_main_info img {
+.weather-main__info img {
   width: 70px;
   height: 70px;
 }
 
-.weather_main_info h1{
+.weather-main__info h1 {
   margin: 0 0 20px;
 }
 
-.weather_main_error {
+.weather-main__error {
   padding: 50px 15px 0 15px;
   border-radius: 15px;
   box-shadow: 0 5px 10px 2px rgba(34, 60, 80, 0.2);
 }
 
-.weather_main_error h2, h5 {
+.weather-main__error h2, h5 {
   margin: 5px 0 0 0;
   color: #272727;
 }
 
-.weather_main_error button {
+.weather-main__error button {
   padding: 4px 15px 1px 15px;
   color: #FF0000FF;
   outline: none;
@@ -215,18 +221,18 @@ h1{
   transition: 0.8s;
 }
 
-.weather_main_error button:hover {
+.weather-main__error button:hover {
   color: #f20000;
   background: #f0f0f0;
 }
 
-.weather_main_error img {
+.weather-main__error img {
   width: 150px;
   height: 150px;
   padding: 0 0 40px 0;
 }
 
-.weather_main_date input {
+.weather-main__date input {
   font-size: 30px;
   font-weight: bold;
   color: #272727;
@@ -237,11 +243,12 @@ h1{
   padding: 10px;
   border-bottom: 2px solid #272727;
   transition: 0.8s;
+  cursor: pointer;
 }
-.weather_main_date input:hover {
+
+.weather-main__date input:hover {
   border-radius: 10px 10px 0 0;
   background: #eaeaea;
 }
-
 
 </style>
